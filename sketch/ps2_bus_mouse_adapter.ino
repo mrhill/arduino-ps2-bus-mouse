@@ -11,10 +11,12 @@
 
 /* BEGIN CONFIG */
 
+// #define DEBUG_PRINT
+
 /* Arduino pins - bus mouse */
 #define PIN_BUS_BUTTON1 2
-#define PIN_BUS_BUTTON2 3
-#define PIN_BUS_BUTTON3 4
+#define PIN_BUS_BUTTON2 4
+#define PIN_BUS_BUTTON3 3
 #define PIN_BUS_XDIR 7
 #define PIN_BUS_XREF 8
 #define PIN_BUS_YDIR 9
@@ -33,6 +35,13 @@
 #define PS2_CMD_RESET 0xFF
 #define PS2_CMD_MOUSE_MODE_REMOTE 0xF0
 #define PS2_CMD_MOUSE_READ_DATA 0xEB
+#define PS2_CMD_MOUSE_MODE_STREAM 0xEA
+#define PS2_CMD_MOUSE_READ_DEVICETYPE 0xF2
+#define PS2_CMD_MOUSE_SET_SAMPLERATE 0xF3
+#define PS2_CMD_MOUSE_SET_RESOLUTION 0xE8
+#define PS2_CMD_MOUSE_SET_SCALING1TO1 0xE6
+#define PS2_CMD_MOUSE_ENABLE 0xF4
+#define PS2_CMD_MOUSE_SET_DEFAULTS 0xF6
 
 #define PS2_RSP_ACK 0xFA
 #define PS2_RSP_MOUSE_TEST_PASS 0xAA
@@ -78,26 +87,54 @@ bool ps2_mouse_init()
   digitalWrite(PIN_PS2_VCC, LOW);
   delay(250);
   digitalWrite(PIN_PS2_VCC, HIGH);
-  delay(100);
+  delay(500);
 
-  if(send_ps2_cmd(PS2_CMD_RESET))
+  for (int i=0; i<3; i++)
   {
-    if(expect_ps2(PS2_RSP_MOUSE_TEST_PASS))
-    {
-      Serial.println("Mouse test pass!");
-      
-      unsigned char mouseId = mouse.read();
-      Serial.print("Mouse ID ");
-      Serial.println(mouseId, HEX);
-      
-      if(send_ps2_cmd(PS2_CMD_MOUSE_MODE_REMOTE))
-      {
-        Serial.println("Remote mode active");
-        return true;
-      }
-    }
+    if(!send_ps2_cmd(PS2_CMD_RESET))
+      return false;
+    Serial.println("Reset sent...");
+
+    if(!expect_ps2(PS2_RSP_MOUSE_TEST_PASS))
+      return false;
+    Serial.println("Mouse test pass!");
+    
+    unsigned char mouseId = mouse.read();
+    Serial.print("Mouse ID ");
+    Serial.println(mouseId, HEX);
   }
-  return false;
+
+  Serial.println("Set sample rate 10...");
+  if (!send_ps2_cmd(PS2_CMD_MOUSE_SET_SAMPLERATE) || !send_ps2_cmd(10))
+    return false;
+
+  if (!send_ps2_cmd(PS2_CMD_MOUSE_READ_DEVICETYPE))
+    return false;
+  unsigned char deviceType = mouse.read();
+  Serial.print("Device Type ");
+  Serial.println(deviceType, HEX);
+
+  Serial.println("Set resolution...");
+  if (!send_ps2_cmd(PS2_CMD_MOUSE_SET_RESOLUTION) || !send_ps2_cmd(3))
+    return false;
+
+  Serial.println("Set scaling 1:1...");
+  if (!send_ps2_cmd(PS2_CMD_MOUSE_SET_SCALING1TO1))
+    return false;
+
+  Serial.println("Set sample rate 100...");
+  if (!send_ps2_cmd(PS2_CMD_MOUSE_SET_SAMPLERATE) || !send_ps2_cmd(100))
+    return false;
+
+  if (!send_ps2_cmd(PS2_CMD_MOUSE_ENABLE))
+    return false;
+  Serial.println("Enabled");
+
+  // if (!send_ps2_cmd(PS2_CMD_MOUSE_MODE_REMOTE))
+  //   return false;
+  // Serial.println("Remote mode active");
+
+  return true;
 }
 
 void setup()
@@ -110,7 +147,7 @@ void setup()
   pinMode(PIN_BUS_XREF, OUTPUT);  
   pinMode(PIN_BUS_YDIR, OUTPUT);  
   pinMode(PIN_BUS_YREF, OUTPUT);
-  
+
   Serial.begin(9600);
   
   while(!ps2_mouse_init())
@@ -162,11 +199,22 @@ void loop()
   char mx;
   char my;
 
-  send_ps2_cmd(PS2_CMD_MOUSE_READ_DATA);
+  //send_ps2_cmd(PS2_CMD_MOUSE_READ_DATA);
   
   mstat = mouse.read();
   mx = mouse.read();
   my = mouse.read();
+
+  #ifdef DEBUG_PRINT
+  if (mx|my) {
+    Serial.print(mstat, HEX);
+    Serial.print(' ');
+    Serial.print(mx, DEC);
+    Serial.print(' ');
+    Serial.print(my, DEC);
+    Serial.println();
+  }
+  #endif DEBUG_PRINT
 
   bool b1 = mstat & 0b001;
   bool b2 = mstat & 0b010;
